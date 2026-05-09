@@ -1,10 +1,23 @@
-# Virtual Environment
+# ============================================================================
+# PX-Intel .gitignore - Hospital Feedback Analysis System
+# ============================================================================
+# This file ensures that large files, sensitive data, and environment-specific
+# files are never committed to the repository.
+
+# ============================================================================
+# 1. VIRTUAL ENVIRONMENTS
+# ============================================================================
 .venv/
 venv/
 env/
 ENV/
+.venv
+.python-version
+pyenv.cfg
 
-# Python
+# ============================================================================
+# 2. PYTHON RUNTIME & CACHE
+# ============================================================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -29,26 +42,92 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# IDE
+# ============================================================================
+# 3. IDE & EDITOR FILES
+# ============================================================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
+.project
+.pydevproject
+*.sublime-project
+*.sublime-workspace
+.vscode/*
+!.vscode/settings.json
 
-# Cache
+# ============================================================================
+# 4. TESTING & PYTEST
+# ============================================================================
 .pytest_cache/
-.streamlit/
+.coverage
+htmlcov/
+.tox/
+pytest.ini
 
-# Model cache
+# ============================================================================
+# 5. ML MODEL CACHES & LARGE FILES
+# ============================================================================
+# Pre-trained model caches from HuggingFace
+huggingface/
+.cache/
 *.pkl
 *.model
-huggingface/
+*.bin
+*.pt
+*.pth
+*.safetensors
 
-# Data (optional - uncomment if you want to exclude raw data)
-# text_data.csv
+# Streamlit cache (state management, session data)
+.streamlit/
+.streamlit/cache/
 
-# Environment variables
+# ============================================================================
+# 6. ENVIRONMENT VARIABLES & SECRETS
+# ============================================================================
 .env
 .env.local
+.env.*.local
+*.key
+*.pem
+credentials.json
+secrets.yaml
+
+# ============================================================================
+# 7. JUPYTER & NOTEBOOKS
+# ============================================================================
+.ipynb_checkpoints/
+*.ipynb
+.jupyter/
+
+# ============================================================================
+# 8. OS SPECIFIC
+# ============================================================================
+.DS_Store
+Thumbs.db
+.git-credentials
+*.lnk
+
+# ============================================================================
+# 9. TEMPORARY & BACKUP FILES
+# ============================================================================
+*.tmp
+*.bak
+*.backup
+*.swp
+*~
+.#*
+*.pid
+
+# ============================================================================
+# FILES THAT SHOULD BE COMMITTED:
+# ============================================================================
+# app.py                          - Streamlit application
+# data_loader.py                  - Robust CSV data loader
+# test_loader.py                  - Unit tests
+# requirements.txt                - Python dependencies
+# text_data.csv                   - Hospital feedback data
+# *.md                            - Documentation files
+# .gitignore                      - This file
