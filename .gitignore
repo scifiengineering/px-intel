@@ -1,0 +1,54 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Cache
+.pytest_cache/
+.streamlit/
+
+# Model cache
+*.pkl
+*.model
+huggingface/
+
+# Data (optional - uncomment if you want to exclude raw data)
+# text_data.csv
+
+# Environment variables
+.env
+.env.local
