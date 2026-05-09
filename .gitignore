@@ -122,6 +122,15 @@ Thumbs.db
 *.pid
 
 # ============================================================================
+# 10. PROJECT-SPECIFIC INTERNAL DOCUMENTATION
+# ============================================================================
+# These are internal tracking/development files, not part of public repo
+PROJECT_STATUS.md
+PHASE_3_SUMMARY.md
+FILES_RESTORED.md
+GIT_SETUP_COMPLETE.md
+
+# ============================================================================
 # FILES THAT SHOULD BE COMMITTED:
 # ============================================================================
 # app.py                          - Streamlit application
@@ -129,5 +138,6 @@ Thumbs.db
 # test_loader.py                  - Unit tests
 # requirements.txt                - Python dependencies
 # text_data.csv                   - Hospital feedback data
-# *.md                            - Documentation files
+# README.md                       - Main project documentation (ONLY .md file)
 # .gitignore                      - This file
+# .github/copilot-instructions.md - Copilot development guide
