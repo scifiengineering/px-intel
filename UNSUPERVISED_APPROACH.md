@@ -34,10 +34,11 @@ Text Data (Normalized)
 
 ## M1: Discovery (Unsupervised Clustering)
 
-**Module**: `unsupervised_clustering.py`  
+**Module**: `unsupervised_clustering.py`
 **Class**: `UnsupervisedClusteringEngine`
 
 ### What it does
+
 - **TF-IDF Vectorization**: Converts texts to numerical features
 - **LDA Topic Modeling**: Discovers latent themes (auto-selects optimal topics)
 - **K-Means Clustering**: Groups texts by topic similarity (auto-selects optimal K)
@@ -45,11 +46,13 @@ Text Data (Normalized)
 - **t-SNE Projection**: 2D visualization of cluster landscape
 
 ### Key Outputs
+
 ```python
 engine = UnsupervisedClusteringEngine()
 engine.fit(texts, auto_select=True)
 
 # Access results
+
 engine.cluster_assignments  # Cluster ID per document
 engine.tsne_projection      # 2D coordinates for visualization
 engine.paradox_scores       # JS divergence between clusters
@@ -57,6 +60,7 @@ engine.cluster_statistics   # Size, composition per cluster
 ```
 
 ### Usage Example
+
 ```python
 from unsupervised_clustering import UnsupervisedClusteringEngine
 
@@ -69,10 +73,11 @@ print(engine.get_cluster_summary())
 
 ## M2: Audit (Cluster Sentiment & Vocabulary)
 
-**Module**: `cluster_audit.py`  
+**Module**: `cluster_audit.py`
 **Class**: `ClusterAuditEngine`
 
 ### What it does
+
 - **Sentiment Analysis**: RoBERTa per-cluster sentiment (POSITIVE/NEGATIVE/NEUTRAL)
 - **Sentiment Density**: Concentration score per cluster
 - **Zone Classification**: Red (distress) / Green (satisfaction) / Neutral
@@ -80,11 +85,13 @@ print(engine.get_cluster_summary())
 - **Audit Reports**: Human-readable summary per cluster
 
 ### Key Outputs
+
 ```python
 audit_engine = ClusterAuditEngine()
 audit_engine.audit(texts, cluster_assignments)
 
 # Access results
+
 audit_engine.get_red_zones()          # High-distress clusters
 audit_engine.get_green_zones()        # High-satisfaction clusters
 audit_engine.cluster_audit_reports    # Formatted reports
@@ -92,6 +99,7 @@ audit_engine.export_to_dataframe()    # CSV-ready data
 ```
 
 ### Usage Example
+
 ```python
 from cluster_audit import ClusterAuditEngine
 
@@ -107,27 +115,31 @@ df.to_csv('audit_results.csv', index=False)
 
 ## M3: Reasoning (Causal Analysis & Predictions)
 
-**Module**: `causal_reasoning.py`  
+**Module**: `causal_reasoning.py`
 **Class**: `CausalReasoningEngine`
 
 ### What it does
+
 - **Causal Validation**: Uses DeBERTa NLI to verify keyword → sentiment entailment
 - **Cluster Similarity**: Cosine similarity on LDA topic distributions
 - **Cascade Prediction**: If Cluster A fixed, predict impact on Cluster B
 - **If-Then Statements**: Generate actionable insights
 
 ### Key Outputs
+
 ```python
 causal_engine = CausalReasoningEngine()
 causal_engine.reason(lda_features, vocabularies, sentiment_results)
 
 # Access results
+
 causal_engine.cascade_predictions     # Cross-cluster impacts
 causal_engine.causal_validations      # Keyword entailments
 causal_engine.cluster_similarities    # Pairwise similarities
 ```
 
 ### Usage Example
+
 ```python
 from causal_reasoning import CausalReasoningEngine
 
@@ -143,26 +155,28 @@ print(causal.get_summary())
 **Module**: `app_unsupervised.py`
 
 ### Launch
+
 ```bash
 streamlit run app_unsupervised.py
 ```
 
 ### Features
+
 - **🗺️ Landscape Tab**: Interactive t-SNE scatter plot
   - Color-coded by cluster zone (Red/Green/Neutral)
   - Hover for entry details
   - Zone distribution summary
-  
+
 - **📊 Cluster Audit Tab**: Per-cluster reports
   - Sentiment breakdown
   - Top keywords
   - Distress/satisfaction levels
-  
+
 - **⚡ Causal Analysis Tab**: Cascade predictions
   - If-Then statements
   - Cross-cluster impacts
   - Causal confirmations
-  
+
 - **📋 Data Export Tab**: Download results
   - Enriched CSV with cluster assignments
   - Clustering results (pickle)
@@ -172,16 +186,19 @@ streamlit run app_unsupervised.py
 ## Testing
 
 ### Unit Tests (25 tests for M1)
+
 ```bash
 pytest test_unsupervised_clustering.py -v
 ```
 
 ### Cluster Audit Tests
+
 ```bash
 pytest test_cluster_audit.py -v
 ```
 
 ### Integration Test (M1-M4)
+
 ```bash
 python test_integration.py
 ```
@@ -280,4 +297,3 @@ causal.get_summary()                                     # Print summary
 - **Questions**: See app_unsupervised.py docstrings
 - **Debugging**: Run test_integration.py for diagnostics
 - **Data Format**: CSV with 'content' column (see text_data.csv example)
-

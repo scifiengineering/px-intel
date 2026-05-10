@@ -25,7 +25,6 @@ Once clusters are defined by the unsupervised engine, we apply the following:
 * **DeBERTa-v3 (Causal Linkage):** Use Natural Language Inference (NLI) to verify the "Why."
 * *Task:* Test if [Extracted Keyword] logically entails the [Negative Sentiment] found in that cluster.
 
-
 * **Secondary Issue Prediction:** Analyze the relationship between clusters. If Cluster A (Staffing) and Cluster B (Safety) share high semantic similarity, the system predicts that resolving issues in A will have a cascading effect on B.
 
 ### Phase 4: Adaptive Scheduling & Alert System
