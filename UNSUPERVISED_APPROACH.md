@@ -4,6 +4,8 @@
 
 PX-Intel has transitioned from a **supervised/zero-shot** model approach (RoBERTa + DeBERTa) to an **unsupervised-first discovery system** that automatically discovers service gaps without pre-defined categories.
 
+The documentation and dashboard now emphasize plain-language, service-oriented interpretation. The same workflow can be applied to hospital, customer, client, or other feedback streams.
+
 ### Architecture: 4-Phase Pipeline
 
 ```
@@ -124,6 +126,7 @@ df.to_csv('audit_results.csv', index=False)
 - **Cluster Similarity**: Cosine similarity on LDA topic distributions
 - **Cascade Prediction**: If Cluster A fixed, predict impact on Cluster B
 - **If-Then Statements**: Generate actionable insights
+- **Plain-Language Reporting**: Summaries are written so service teams can read them without model-specific terminology
 
 ### Key Outputs
 
@@ -176,6 +179,7 @@ streamlit run app_unsupervised.py
   - If-Then statements
   - Cross-cluster impacts
   - Causal confirmations
+  - Current limitation: some clusters still yield generic or empty cascade suggestions, so the next iteration will tie recommendations more directly to service actions
 
 - **📋 Data Export Tab**: Download results
   - Enriched CSV with cluster assignments
@@ -250,6 +254,7 @@ causal.get_summary()                                     # Print summary
 | **Validation** | Sentiment + cause extraction | NLI causal validation |
 | **Visualization** | Distribution charts | Interactive t-SNE landscape |
 | **Flexibility** | Requires label engineering | Adapts to data patterns |
+| **Reporting style** | Technical model output | Plain-language service insights |
 
 ---
 

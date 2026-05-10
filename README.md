@@ -1,15 +1,17 @@
-# PX-Intel: Hospital Feedback Analysis System
+# PX-Intel: Service Feedback Analysis System
 
-A comprehensive sentiment and causal analysis system for hospital patient feedback using advanced NLP models.
+A comprehensive sentiment and causal analysis system for service feedback using advanced NLP models.
 
 ## Overview
 
-PX-Intel processes hospital feedback data through four phases:
+PX-Intel processes service feedback data through four phases:
 
 - **Phase 1**: Robust data loading with error handling (10,301+ entries)
 - **Phase 2**: Streamlit prototype with sentiment analysis (RoBERTa)
 - **Phase 3**: Advanced NLI-based causal analysis (DeBERTa) - Archived
 - **Phase 4**: Unsupervised clustering pipeline (LDA + K-Means + t-SNE) - **Active**
+
+The current emphasis is on plain-language insights that help explain how feedback relates to service experience, regardless of whether the domain is healthcare, customer support, or another client-facing setting.
 
 ## Quick Start
 
@@ -60,12 +62,15 @@ streamlit run app_unsupervised.py
 - Cross-cluster similarity computation
 - Cascade effect prediction (if-then statements)
 - Multi-hop causal chains
+- Plain-language operational summaries
+
+Current limitation: cascade suggestions are still broad in some clusters. The next iteration will make recommendations more specific and coherent, such as linking repeated wait-time or frustration signals to staffing or equipment improvements when the evidence supports that step.
 
 #### M4 - Dashboard
 
 - **Landscape Tab**: Interactive t-SNE scatter with zone coloring
 - **Cluster Audit Tab**: Sentiment breakdown and top keywords per cluster
-- **Causal Analysis Tab**: Cascade predictions and causal chains
+- **Causal Analysis Tab**: Cascade predictions, causal chains, and service-oriented follow-up guidance
 - **Data Export Tab**: CSV and pickle download
 
 ### Phase 2-3: Supervised Analysis (Archived)
@@ -79,7 +84,7 @@ Still available in `app.py`:
 
 ## Project Structure
 
-```
+```text
 .
 ├── app.py                              # Supervised Streamlit app (archived)
 ├── app_unsupervised.py                 # Unsupervised Streamlit dashboard (active)
@@ -98,7 +103,7 @@ Still available in `app.py`:
 ├── UNSUPERVISED_APPROACH.md            # Phase 4 technical documentation
 ├── PHASE_3_SUMMARY.md                  # Phase 3 technical details
 └── GIT_SETUP_COMPLETE.md               # Git configuration
-```
+```text
 
 ## Key Statistics
 
@@ -107,6 +112,7 @@ Still available in `app.py`:
 - **Phase 4 Tests**: 28 unit tests + integration test (all passing)
 - **Performance**: <1s startup with Streamlit caching
 - **Models**: RoBERTa (sentiment) + KeyBERT (vocabulary) + DeBERTa (causal validation)
+- **Interpretation**: Plain-language summaries are preferred over technical model labels
 
 ## Documentation
 
