@@ -61,6 +61,9 @@ class ActionInsight:
     root_cause: str
     cascades: List[str]
     example_feedback: str
+    professional_name: str = ""
+    ai_enhanced: bool = False
+    ai_rationale: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -122,6 +125,12 @@ class CXActionIntelligenceAgent:
                 sentiment_label=sentiment_label,
                 priority_label=priority_label,
             )
+            professional_name = professional_issue_name(
+                issue_theme=issue_theme,
+                sentiment_label=sentiment_label,
+                priority_label=priority_label,
+                keywords=keywords,
+            )
 
             insights.append(
                 ActionInsight(
@@ -137,6 +146,7 @@ class CXActionIntelligenceAgent:
                     root_cause=root_cause,
                     cascades=cascades,
                     example_feedback=self._pick_example_feedback(texts),
+                    professional_name=professional_name,
                     metadata={
                         "zone_type": zone.get("zone_type", "UNKNOWN"),
                         "cluster_size": len(texts),
@@ -157,7 +167,9 @@ class CXActionIntelligenceAgent:
         return pd.DataFrame(
             [
                 {
+                    "Signal ID": signal_reference(item.cluster_id),
                     "Cluster": item.cluster_id,
+                    "Experience Signal": insight_display_name(item),
                     "Issue (theme)": item.issue_theme.title(),
                     "Sentiment": f"{item.sentiment_emoji} {item.sentiment_label.title()}",
                     "Priority": item.priority_label,
@@ -183,8 +195,20 @@ class CXActionIntelligenceAgent:
         if any(token in normalized for token in ("cascade", "connected", "link", "related")):
             return self._answer_cascades(insights)
 
-        if any(token in normalized for token in ("recommend", "action", "next", "do")):
+        if any(
+            phrase in normalized
+            for phrase in (
+                "30-day",
+                "30 day",
+                "action plan",
+                "operational plan",
+                "plan",
+            )
+        ):
             return self._answer_actions(insights)
+
+        if any(token in normalized for token in ("recommend", "action", "next", "do")):
+            return self._answer_current_actions(insights)
 
         if any(token in normalized for token in ("summary", "summarize", "leadership", "executive")):
             return self._answer_summary(insights)
@@ -194,11 +218,7 @@ class CXActionIntelligenceAgent:
             if cluster_id is not None:
                 return self._answer_cluster(cluster_id, insights)
 
-        return (
-            "Here is the practical readout: "
-            + self._answer_summary(insights)
-            + "\n\nTry asking: 'What should we fix first?' or 'Show cascade risks.'"
-        )
+        return self._answer_summary(insights)
 
     def _infer_issue_theme(self, keywords: List[str]) -> str:
         """Infer a manager-friendly issue theme from extracted keywords."""
@@ -209,6 +229,7 @@ class CXActionIntelligenceAgent:
             (("clean", "dirty", "room", "facility", "maintenance"), "cleanliness and facilities"),
             (("billing", "cost", "price", "payment", "expensive"), "billing and cost clarity"),
             (("quality", "treatment", "service", "care", "outcome"), "service quality"),
+            (("poor", "bad", "good", "great", "excellent", "experience"), "general experience"),
         ]
         for tokens, theme in theme_rules:
             if any(token in joined for token in tokens):
@@ -252,47 +273,186 @@ class CXActionIntelligenceAgent:
         return str(text).replace("_", " ").replace("-", " ").strip()
 
     def _answer_priorities(self, insights: List[ActionInsight]) -> str:
-        """Explain the highest-priority clusters."""
-        top = insights[:3]
-        lines = ["Fix these first:"]
-        for item in top:
-            lines.append(
-                f"- Cluster {item.cluster_id}: {item.issue_theme.title()} "
-                f"({item.priority_label}, score {item.priority_score:.3f}). "
-                f"{item.recommended_action}"
-            )
+        """Explain the highest-priority signals as a decision brief."""
+        lead = insights[0]
+        lines = [
+            f"### Decision: fix {insight_display_name(lead, include_reference=True)} first",
+            "",
+            (
+                f"PX-Intel ranks this as the first issue to address because it is "
+                f"**{lead.priority_label}**, has a priority score of "
+                f"**{lead.priority_score:.3f}**, and represents "
+                f"**{lead.metadata.get('cluster_size', 0):,} related comments** "
+                f"with **{lead.metadata.get('negative_rate', 0):.0%} negative concentration**."
+            ),
+            "",
+            "#### Why it matters",
+            "",
+            (
+                f"{lead.key_insight} The pattern points to **{lead.root_cause}**, "
+                "which means the fix should target the operating condition behind the feedback, not only the complaint language."
+            ),
+            "",
+            "#### Immediate action",
+            "",
+            f"- **Owner:** {self._owner_for(lead)}",
+            f"- **Timeline:** {self._action_window_for(lead)}",
+            f"- **Move:** {lead.recommended_action}",
+            f"- **Success metric:** {self._success_metric_for(lead)}",
+            f"- **Risk if ignored:** {self._risk_if_ignored(lead)}",
+        ]
+
+        watchlist = insights[1:3]
+        if watchlist:
+            lines.extend(["", "#### Next watchlist"])
+            for item in watchlist:
+                lines.append(
+                    (
+                        f"- **{insight_display_name(item, include_reference=True)}** "
+                        f"({item.priority_label}, score {item.priority_score:.3f}): "
+                        f"{item.recommended_action}"
+                    )
+                )
         return "\n".join(lines)
 
     def _answer_actions(self, insights: List[ActionInsight]) -> str:
-        """List recommended actions."""
-        lines = ["Recommended action plan:"]
-        for item in insights[:5]:
+        """List recommended actions as an operational action plan."""
+        lines = [
+            "### Operational action plan",
+            "",
+            "Use this as the starting work queue for the current feedback cycle.",
+            "",
+        ]
+        for index, item in enumerate(insights[:5], start=1):
             lines.append(
-                f"- Cluster {item.cluster_id}: {item.recommended_action}"
+                (
+                    f"{index}. **{insight_display_name(item, include_reference=True)}** "
+                    f"({item.priority_label})\n"
+                    f"   - Owner: {self._owner_for(item)}\n"
+                    f"   - Timeline: {self._action_window_for(item)}\n"
+                    f"   - Action: {item.recommended_action}\n"
+                    f"   - Success metric: {self._success_metric_for(item)}"
+                )
             )
+        return "\n".join(lines)
+
+    def _answer_current_actions(self, insights: List[ActionInsight]) -> str:
+        """Return a direct current action queue instead of a full plan."""
+        urgent = [
+            item
+            for item in insights
+            if item.priority_label.startswith("HIGH")
+            or item.metadata.get("negative_rate", 0) >= 0.75
+        ]
+        watchlist = [
+            item
+            for item in insights
+            if item not in urgent
+            and (
+                item.priority_label.startswith("MEDIUM")
+                or item.metadata.get("negative_rate", 0) >= 0.4
+            )
+        ]
+        selected = []
+        seen_clusters = set()
+        for item in urgent + watchlist + insights:
+            if item.cluster_id in seen_clusters:
+                continue
+            selected.append(item)
+            seen_clusters.add(item.cluster_id)
+            if len(selected) >= 4:
+                break
+
+        lines = [
+            "### Current actions to take",
+            "",
+            (
+                "These are the actions that should be taken from the current PX-Intel evidence. "
+                "This is a direct action queue, not a long-range operating plan."
+            ),
+            "",
+        ]
+        for index, item in enumerate(selected, start=1):
+            action_label = (
+                "Immediate action"
+                if item in urgent
+                else "Next action"
+                if item in watchlist
+                else "Monitor"
+            )
+            lines.append(
+                (
+                    f"{index}. **{action_label}: {insight_display_name(item, include_reference=True)}**\n"
+                    f"   - Why now: {item.metadata.get('cluster_size', 0):,} comments, "
+                    f"{item.metadata.get('negative_rate', 0):.0%} negative concentration, "
+                    f"priority score {item.priority_score:.3f}.\n"
+                    f"   - Owner: {self._owner_for(item)}\n"
+                    f"   - Timeline: {self._action_window_for(item)}\n"
+                    f"   - Action: {item.recommended_action}\n"
+                    f"   - Success metric: {self._success_metric_for(item)}"
+                )
+            )
+
         return "\n".join(lines)
 
     def _answer_cascades(self, insights: List[ActionInsight]) -> str:
         """Explain cascade visibility."""
-        lines = ["Probable operational cascades:"]
+        lines = [
+            "### Cascade risk readout",
+            "",
+            "These are the likely operational paths where one customer issue can create pressure in another part of the service experience.",
+            "",
+        ]
         for item in insights[:5]:
-            cascades = "; ".join(item.cascades[:3])
-            lines.append(f"- Cluster {item.cluster_id}: {cascades}")
+            cascades = "; ".join(item.cascades[:3]) or "No cascade path identified yet"
+            lines.append(
+                (
+                    f"- **{insight_display_name(item, include_reference=True)}**: "
+                    f"{cascades}. Recommended control: {item.recommended_action}"
+                )
+            )
         return "\n".join(lines)
 
     def _answer_summary(self, insights: List[ActionInsight]) -> str:
-        """Generate a short executive summary."""
+        """Generate a stakeholder-ready executive summary."""
         high_count = sum(1 for item in insights if item.priority_label.startswith("HIGH"))
         medium_count = sum(
             1 for item in insights if item.priority_label.startswith("MEDIUM")
         )
         top = insights[0]
-        return (
-            f"I found {len(insights)} cluster-level action insights: "
-            f"{high_count} high priority and {medium_count} medium priority. "
-            f"The top issue is Cluster {top.cluster_id} ({top.issue_theme}), "
-            f"with priority score {top.priority_score:.3f}. "
-            f"Recommended next step: {top.recommended_action}"
+        return "\n".join(
+            [
+                "### Executive decision readout",
+                "",
+                (
+                    f"PX-Intel found **{len(insights)} customer-experience signals**: "
+                    f"**{high_count} high priority** and **{medium_count} medium priority**. "
+                    f"The leading decision item is **{insight_display_name(top, include_reference=True)}**."
+                ),
+                "",
+                "#### What to do first",
+                "",
+                (
+                    f"Fix **{insight_display_name(top, include_reference=True)}** first. "
+                    f"It is scored **{top.priority_score:.3f}**, covers "
+                    f"**{top.metadata.get('cluster_size', 0):,} comments**, and has "
+                    f"**{top.metadata.get('negative_rate', 0):.0%} negative concentration**."
+                ),
+                "",
+                "#### Evidence",
+                "",
+                f"- Signal insight: {top.key_insight}",
+                f"- Root cause: {top.root_cause}",
+                f"- Representative feedback: {top.example_feedback}",
+                "",
+                "#### Recommended move",
+                "",
+                f"- Owner: {self._owner_for(top)}",
+                f"- Timeline: {self._action_window_for(top)}",
+                f"- Action: {top.recommended_action}",
+                f"- Success metric: {self._success_metric_for(top)}",
+                f"- Risk if ignored: {self._risk_if_ignored(top)}",
+            ]
         )
 
     def _answer_cluster(
@@ -303,20 +463,35 @@ class CXActionIntelligenceAgent:
             (item for item in insights if item.cluster_id == cluster_id), None
         )
         if match is None:
-            available = ", ".join(str(item.cluster_id) for item in insights)
-            return f"I could not find Cluster {cluster_id}. Available clusters: {available}."
+            available = ", ".join(signal_reference(item.cluster_id) for item in insights)
+            return f"I could not find that signal. Available signal IDs: {available}."
 
         cascades = "; ".join(match.cascades[:3])
         keywords = ", ".join(match.keywords[:6]) if match.keywords else "None"
-        return (
-            f"Cluster {match.cluster_id} is about {match.issue_theme}. "
-            f"Sentiment is {match.sentiment_label.lower()} and priority is "
-            f"{match.priority_label} (score {match.priority_score:.3f}).\n\n"
-            f"Key insight: {match.key_insight}\n"
-            f"Keywords: {keywords}\n"
-            f"Root cause: {match.root_cause}\n"
-            f"Cascades: {cascades}\n"
-            f"Recommended action: {match.recommended_action}"
+        return "\n".join(
+            [
+                f"### Signal brief: {insight_display_name(match, include_reference=True)}",
+                "",
+                (
+                    f"This signal is about **{match.issue_theme}**. It is marked "
+                    f"**{match.priority_label}** with a score of **{match.priority_score:.3f}**."
+                ),
+                "",
+                "#### Evidence",
+                "",
+                f"- Insight: {match.key_insight}",
+                f"- Keywords: {keywords}",
+                f"- Root cause: {match.root_cause}",
+                f"- Cascades: {cascades or 'No cascade path identified yet'}",
+                f"- Representative feedback: {match.example_feedback}",
+                "",
+                "#### Recommended response",
+                "",
+                f"- Owner: {self._owner_for(match)}",
+                f"- Timeline: {self._action_window_for(match)}",
+                f"- Action: {match.recommended_action}",
+                f"- Success metric: {self._success_metric_for(match)}",
+            ]
         )
 
     def _extract_cluster_id(self, text: str) -> Optional[int]:
@@ -326,6 +501,48 @@ class CXActionIntelligenceAgent:
             if part.isdigit():
                 return int(part)
         return None
+
+    def _owner_for(self, insight: ActionInsight) -> str:
+        """Suggest a practical owner from the issue theme."""
+        theme = str(insight.issue_theme).lower()
+        if "wait" in theme or "scheduling" in theme:
+            return "Operations lead"
+        if "staff" in theme or "communication" in theme:
+            return "Customer experience manager"
+        if "clean" in theme or "facility" in theme:
+            return "Facilities lead"
+        if "billing" in theme or "cost" in theme:
+            return "Revenue operations lead"
+        return "Site manager"
+
+    def _action_window_for(self, insight: ActionInsight) -> str:
+        """Suggest action timing from priority and negative concentration."""
+        negative_rate = insight.metadata.get("negative_rate", 0)
+        if insight.priority_label.startswith("HIGH") or negative_rate >= 0.75:
+            return "Immediate: review this week"
+        if insight.priority_label.startswith("MEDIUM") or negative_rate >= 0.4:
+            return "Next 7 days"
+        return "Monitor in the next feedback cycle"
+
+    def _success_metric_for(self, insight: ActionInsight) -> str:
+        """Define a success metric grounded in available signal metadata."""
+        negative_rate = insight.metadata.get("negative_rate", 0)
+        if negative_rate >= 0.4:
+            return "Reduce negative feedback concentration for this signal in the next feedback cycle."
+        return "Maintain positive concentration while monitoring for new negative comments."
+
+    def _risk_if_ignored(self, insight: ActionInsight) -> str:
+        """Describe the operating risk if the signal is not addressed."""
+        theme = str(insight.issue_theme).lower()
+        if "wait" in theme or "scheduling" in theme:
+            return "Wait friction can compound into missed appointments, lower trust, and repeated service recovery."
+        if "staff" in theme or "communication" in theme:
+            return "Communication gaps can turn fixable issues into escalations and lower customer confidence."
+        if "clean" in theme or "facility" in theme:
+            return "Facility concerns can weaken perceived service quality even when the core service performs well."
+        if "billing" in theme or "cost" in theme:
+            return "Cost confusion can create disputes, callbacks, and avoidable dissatisfaction."
+        return "The same friction may keep appearing in future feedback and crowd out higher-value improvement work."
 
 
 def calculate_priority_score(
@@ -398,6 +615,50 @@ def sentiment_emoji_for_label(label: str) -> str:
     return "⚪"
 
 
+def signal_reference(cluster_id: int) -> str:
+    """Return a compact professional signal identifier."""
+    return f"PX-S{int(cluster_id) + 1:02d}"
+
+
+def professional_issue_name(
+    issue_theme: str,
+    sentiment_label: str,
+    priority_label: str,
+    keywords: Optional[List[str]] = None,
+) -> str:
+    """Create a customer-facing signal name instead of exposing raw cluster numbers."""
+    theme = str(issue_theme or "experience").replace("_", " ").replace("-", " ").strip()
+    theme = " ".join(theme.split()).title()
+    if theme.lower() in {"poor", "bad", "good", "great", "excellent"}:
+        theme = "General Experience"
+    sentiment = str(sentiment_label).upper()
+    priority = str(priority_label).upper()
+
+    if sentiment == "POSITIVE":
+        suffix = "Strength Signal"
+    elif priority.startswith("HIGH"):
+        suffix = "Recovery Risk"
+    elif sentiment == "NEGATIVE":
+        suffix = "Friction Signal"
+    else:
+        suffix = "Watch Signal"
+
+    return f"{theme} {suffix}"
+
+
+def insight_display_name(insight: ActionInsight, include_reference: bool = False) -> str:
+    """Return the preferred display name for an action insight."""
+    name = insight.professional_name or professional_issue_name(
+        insight.issue_theme,
+        insight.sentiment_label,
+        insight.priority_label,
+        insight.keywords,
+    )
+    if include_reference:
+        return f"{name} ({signal_reference(insight.cluster_id)})"
+    return name
+
+
 def generate_recommendation(
     issue_theme: str,
     keywords: List[str],
@@ -439,7 +700,7 @@ def generate_soft_cascades(
             cluster_id, []
         )[:2]:
             cascades.append(
-                f"Cluster {cluster_id} → Cluster {cascade['target_cluster']} "
+                f"{signal_reference(cluster_id)} -> {signal_reference(cascade['target_cluster'])} "
                 f"({cascade['cascade_likelihood']:.0%} shared pattern)"
             )
 
@@ -455,18 +716,19 @@ def generate_insight_summary(
     priority_label: str,
 ) -> str:
     """Generate a one-line plain-language insight for managers."""
+    signal_name = professional_issue_name(issue_theme, sentiment_label, priority_label)
     if str(sentiment_label).upper() == "NEGATIVE":
         return (
-            f"Cluster {cluster_id} shows recurring {issue_theme} friction "
+            f"{signal_name} shows recurring {issue_theme} friction "
             f"across {cluster_size} comments ({negative_rate:.0%} negative)."
         )
     if str(sentiment_label).upper() == "POSITIVE":
         return (
-            f"Cluster {cluster_id} highlights a positive {issue_theme} pattern "
+            f"{signal_name} highlights a positive {issue_theme} pattern "
             f"that can be protected or replicated."
         )
     return (
-        f"Cluster {cluster_id} is a mixed {issue_theme} signal; "
+        f"{signal_name} is a mixed {issue_theme} signal; "
         f"{priority_label.lower()} follow-up is appropriate."
     )
 
