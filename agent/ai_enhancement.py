@@ -131,9 +131,13 @@ class OpenAIInsightEnhancer:
             "dataset_context": context or {},
             "response_requirements": [
                 "Answer as a business intelligence operator, not a chatbot.",
+                "Answer the user's actual question first before adding context.",
                 "Use only the provided PX-Intel context.",
                 "Reference professional signal names, not raw cluster labels.",
                 "Include evidence, metric reasoning, owner-ready next actions, and success measures.",
+                "Infer whether the user is asking for actions, evidence, risks, strengths, metrics, root causes, comparisons, terminology, reports, or a specific signal.",
+                "If the user asks what NLI, NLI support, weak NLI support, entailment, or support means, answer as a PX-Intel terminology explanation, not as a decision readout.",
+                "Explain that NLI means Natural Language Inference and that support percentages are model confidence in a root-cause/sentiment hypothesis, not the percent of customers who said something and not proof of causality.",
                 "If the user asks what current actions need to be taken, return a concise current action queue, not a full operational plan.",
                 "Only write a multi-step operational plan when the user explicitly asks for a plan, 30-day plan, or operating cadence.",
                 "If response_mode asks for a plan or memo, produce a complete artifact with headings.",
@@ -171,11 +175,15 @@ class OpenAIInsightEnhancer:
             "requirements": [
                 "Return a polished Markdown report.",
                 "Keep all numbers, priorities, and evidence grounded in the base report.",
+                "Respect the selected report filters and report_focus in report_context; do not write about excluded signals as if they are in scope.",
+                "Make the report structure visibly change based on report_type, audience, report_depth, and report_filters.",
+                "If filters narrow the report to high priority, write an urgent recovery brief; if they narrow to opportunities, write a strengths-expansion brief; if they narrow by theme, write as a focused operating-area memo.",
                 "Do not invent facts or make claims not supported by the provided data.",
                 "Use professional signal names instead of generic cluster labels.",
                 "Make recommendations concrete, owner-oriented, and operational.",
                 "Include an executive readout, evidence-backed findings, operational playbook, risk/cascade implications, and next decisions.",
                 "Use the report depth and audience from report_context to tune the level of detail.",
+                "Do not just restate headings from the base report; synthesize the selected evidence into a stakeholder-ready narrative.",
                 "Write as if this is a serious deliverable for an operations leader.",
                 "Avoid generic filler; every paragraph should connect a metric, evidence point, or action.",
             ],
@@ -310,9 +318,12 @@ AI_REPORT_INSTRUCTIONS = """
 You write professional customer-experience intelligence reports. Preserve the
 provided facts and metrics, improve specificity and clarity, and avoid generic
 consulting language. The report should feel like it learned from the active
-dataset: cite the strongest signals, quote or summarize evidence, explain why
-each recommendation follows from the metrics, and separate immediate actions
-from monitored risks. Return Markdown only.
+dataset and the selected report filters: cite the strongest in-scope signals,
+quote or summarize evidence, explain why each recommendation follows from the
+metrics, and separate immediate actions from monitored risks. The output must
+feel materially different when the report filters change; adapt the thesis,
+section emphasis, action plan, and stakeholder message to the selected scope.
+Return Markdown only.
 """
 
 AI_PAGE_EXPLANATION_INSTRUCTIONS = """
@@ -349,6 +360,11 @@ GENERATION_MODE_REQUIREMENTS = {
     "Report section": [
         "Write a polished report-ready section with a clear title, evidence, implications, and actions.",
         "Use Markdown suitable for insertion into the written report.",
+    ],
+    "Terminology explanation": [
+        "Use sections: Definition, What it means in PX-Intel, How to interpret it, What not to assume.",
+        "Answer the concept directly before mentioning any priority signal or recommended action.",
+        "Keep it grounded in PX-Intel terminology and explain support percentages in plain English.",
     ],
 }
 

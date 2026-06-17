@@ -3,6 +3,7 @@ M5: Customer Experience Action Intelligence
 Rule-based decision-support layer for cluster, sentiment, keyword, and causal outputs.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -189,6 +190,32 @@ class CXActionIntelligenceAgent:
         if not insights:
             return "I do not have action insights yet. Run the discovery, audit, and reasoning pipeline first."
 
+        referenced_signal = self._find_referenced_signal(normalized, insights)
+
+        if self._is_nli_question(normalized):
+            return self._answer_nli_explanation(insights, referenced_signal)
+
+        if any(token in normalized for token in ("evidence", "proof", "example", "examples", "comment", "comments", "said")):
+            return self._answer_evidence(insights, referenced_signal)
+
+        if any(phrase in normalized for phrase in ("root cause", "why is", "why are", "why", "cause", "driver", "drivers")):
+            return self._answer_root_causes(insights, referenced_signal)
+
+        if any(token in normalized for token in ("risk", "risks", "negative", "worst", "concern", "concerns", "problem", "problems")):
+            return self._answer_risks(insights)
+
+        if any(token in normalized for token in ("strength", "strengths", "positive", "opportunity", "opportunities", "working", "good")):
+            return self._answer_opportunities(insights)
+
+        if any(token in normalized for token in ("count", "counts", "many", "volume", "metrics", "numbers", "score", "scores")):
+            return self._answer_metrics(insights, referenced_signal)
+
+        if any(token in normalized for token in ("compare", "comparison", "versus", "vs", "difference")):
+            return self._answer_comparison(insights)
+
+        if any(token in normalized for token in ("owner", "own", "owns", "ownership", "responsible", "assign", "assigned")):
+            return self._answer_owners(insights, referenced_signal)
+
         if any(token in normalized for token in ("first", "priority", "urgent", "fix")):
             return self._answer_priorities(insights)
 
@@ -218,7 +245,98 @@ class CXActionIntelligenceAgent:
             if cluster_id is not None:
                 return self._answer_cluster(cluster_id, insights)
 
+        if referenced_signal is not None:
+            return self._answer_signal_question(referenced_signal)
+
         return self._answer_summary(insights)
+
+    def _is_nli_question(self, normalized: str) -> bool:
+        """Detect glossary questions about PX-Intel's NLI support language."""
+        if "nli" in normalized:
+            return True
+        glossary_phrases = (
+            "natural language inference",
+            "what does support mean",
+            "weak support",
+            "causal support",
+            "issue signals supported",
+            "supported issue signals",
+            "entailment",
+        )
+        return any(phrase in normalized for phrase in glossary_phrases)
+
+    def _answer_nli_explanation(
+        self,
+        insights: List[ActionInsight],
+        focus: Optional[ActionInsight] = None,
+    ) -> str:
+        """Explain NLI support in stakeholder-friendly language."""
+        selected = [focus] if focus is not None else insights[:4]
+        support_rows = []
+        for item in selected:
+            support_match = re.search(
+                r"(\d+(?:\.\d+)?)%\s+(weak\s+)?NLI support",
+                str(item.root_cause),
+                flags=re.IGNORECASE,
+            )
+            if not support_match:
+                continue
+            support_rows.append(
+                {
+                    "insight": item,
+                    "support": float(support_match.group(1)),
+                    "weak": bool(support_match.group(2)),
+                }
+            )
+
+        lines = [
+            "### What NLI means in PX-Intel",
+            "",
+            (
+                "**NLI** means **Natural Language Inference**. PX-Intel uses it in the "
+                "causal-reasoning step to test whether a feedback theme or keyword appears "
+                "to support a sentiment or root-cause hypothesis."
+            ),
+            "",
+            (
+                "When you see wording like **91% NLI support**, read it as model confidence "
+                "that the phrase is a plausible driver of the signal. It is **not** saying "
+                "that 91% of customers said the same thing, and it is not absolute proof of causality."
+            ),
+            "",
+            "#### How to use it",
+            "",
+            "- High NLI support means the root-cause hypothesis is stronger and worth operational review.",
+            "- Weak NLI support means PX-Intel is flagging a possible cause, but the team should validate it with more evidence.",
+            "- Always pair NLI support with feedback volume, negative concentration, representative comments, and the recommended action.",
+        ]
+
+        if support_rows:
+            lines.extend(["", "#### In the current data"])
+            for row in support_rows:
+                item = row["insight"]
+                qualifier = "weak support" if row["weak"] else "support"
+                lines.append(
+                    (
+                        f"- **{insight_display_name(item, include_reference=True)}** shows "
+                        f"**{row['support']:.0f}% NLI {qualifier}** for the root-cause phrase "
+                        f"`{item.root_cause}`. Treat that as a confidence signal behind the "
+                        f"recommended action, not as a standalone decision."
+                    )
+                )
+
+        lines.extend(
+            [
+                "",
+                "#### Plain-English translation",
+                "",
+                (
+                    "PX-Intel is saying: “The language in the feedback appears to support this "
+                    "root-cause explanation, so use it as evidence for where to investigate first.”"
+                ),
+            ]
+        )
+        return "\n".join(lines)
 
     def _infer_issue_theme(self, keywords: List[str]) -> str:
         """Infer a manager-friendly issue theme from extracted keywords."""
@@ -395,6 +513,237 @@ class CXActionIntelligenceAgent:
 
         return "\n".join(lines)
 
+    def _answer_evidence(
+        self,
+        insights: List[ActionInsight],
+        focus: Optional[ActionInsight] = None,
+    ) -> str:
+        """Show the evidence behind one signal or the top signals."""
+        selected = [focus] if focus is not None else insights[:3]
+        lines = [
+            "### Evidence from the active feedback",
+            "",
+            "PX-Intel is using the current processed feedback, signal metrics, keywords, and representative comments.",
+            "",
+        ]
+        for item in selected:
+            keywords = ", ".join(item.keywords[:6]) if item.keywords else "No keywords"
+            lines.append(
+                (
+                    f"- **{insight_display_name(item, include_reference=True)}**\n"
+                    f"  - Evidence base: {item.metadata.get('cluster_size', 0):,} comments, "
+                    f"{item.metadata.get('negative_rate', 0):.0%} negative concentration, "
+                    f"priority score {item.priority_score:.3f}.\n"
+                    f"  - Keywords: {keywords}\n"
+                    f"  - Representative feedback: {item.example_feedback}\n"
+                    f"  - Interpretation: {item.key_insight}"
+                )
+            )
+        return "\n".join(lines)
+
+    def _answer_root_causes(
+        self,
+        insights: List[ActionInsight],
+        focus: Optional[ActionInsight] = None,
+    ) -> str:
+        """Explain root causes from the current signals."""
+        selected = [focus] if focus is not None else insights[:4]
+        lines = [
+            "### Root cause readout",
+            "",
+            "These are the likely drivers PX-Intel found from the active feedback evidence.",
+            "",
+        ]
+        for item in selected:
+            lines.append(
+                (
+                    f"- **{insight_display_name(item, include_reference=True)}**: "
+                    f"{item.root_cause}. Recommended response: {item.recommended_action}"
+                )
+            )
+        return "\n".join(lines)
+
+    def _answer_risks(self, insights: List[ActionInsight]) -> str:
+        """Summarize the most important risk signals."""
+        risk_items = [
+            item
+            for item in insights
+            if item.priority_label.startswith("HIGH")
+            or item.metadata.get("negative_rate", 0) >= 0.4
+        ]
+        risk_items = risk_items[:4] or insights[:3]
+        lines = [
+            "### Customer risk signals",
+            "",
+            "These are the signals most likely to require management attention because they combine negative concentration, volume, and priority score.",
+            "",
+        ]
+        for item in risk_items:
+            lines.append(
+                (
+                    f"- **{insight_display_name(item, include_reference=True)}** "
+                    f"({item.priority_label}): {item.metadata.get('cluster_size', 0):,} comments, "
+                    f"{item.metadata.get('negative_rate', 0):.0%} negative, score {item.priority_score:.3f}. "
+                    f"Action: {item.recommended_action}"
+                )
+            )
+        return "\n".join(lines)
+
+    def _answer_opportunities(self, insights: List[ActionInsight]) -> str:
+        """Summarize positive or protectable experience patterns."""
+        opportunity_items = [
+            item
+            for item in insights
+            if str(item.sentiment_label).upper() == "POSITIVE"
+            or item.metadata.get("negative_rate", 0) <= 0.2
+        ]
+        opportunity_items = sorted(
+            opportunity_items,
+            key=lambda item: item.metadata.get("cluster_size", 0),
+            reverse=True,
+        )[:4]
+        if not opportunity_items:
+            opportunity_items = insights[-3:]
+        lines = [
+            "### Strengths and opportunities",
+            "",
+            "These are the patterns PX-Intel would protect, repeat, or use as service-quality examples.",
+            "",
+        ]
+        for item in opportunity_items:
+            lines.append(
+                (
+                    f"- **{insight_display_name(item, include_reference=True)}**: "
+                    f"{item.metadata.get('cluster_size', 0):,} comments, "
+                    f"{item.metadata.get('negative_rate', 0):.0%} negative concentration. "
+                    f"Recommended move: {item.recommended_action}"
+                )
+            )
+        return "\n".join(lines)
+
+    def _answer_metrics(
+        self,
+        insights: List[ActionInsight],
+        focus: Optional[ActionInsight] = None,
+    ) -> str:
+        """Answer metric and count questions."""
+        if focus is not None:
+            return "\n".join(
+                [
+                    f"### Metrics for {insight_display_name(focus, include_reference=True)}",
+                    "",
+                    f"- Priority: {focus.priority_label}",
+                    f"- Priority score: {focus.priority_score:.3f}",
+                    f"- Feedback volume: {focus.metadata.get('cluster_size', 0):,} comments",
+                    f"- Negative concentration: {focus.metadata.get('negative_rate', 0):.0%}",
+                    f"- Signal share: {focus.metadata.get('cluster_share', 0):.0%} of processed feedback",
+                    f"- Root cause: {focus.root_cause}",
+                ]
+            )
+
+        high_count = sum(1 for item in insights if item.priority_label.startswith("HIGH"))
+        medium_count = sum(1 for item in insights if item.priority_label.startswith("MEDIUM"))
+        low_count = sum(1 for item in insights if item.priority_label.startswith("LOW"))
+        total_comments = sum(item.metadata.get("cluster_size", 0) for item in insights)
+        avg_negative = (
+            sum(item.metadata.get("negative_rate", 0) for item in insights) / len(insights)
+            if insights
+            else 0
+        )
+        return "\n".join(
+            [
+                "### Current PX-Intel metrics",
+                "",
+                f"- Experience signals: {len(insights)}",
+                f"- Feedback represented in signals: {total_comments:,} comments",
+                f"- High priority: {high_count}",
+                f"- Medium priority: {medium_count}",
+                f"- Low priority: {low_count}",
+                f"- Average negative concentration across signals: {avg_negative:.0%}",
+                f"- Highest priority signal: {insight_display_name(insights[0], include_reference=True)} ({insights[0].priority_score:.3f})",
+            ]
+        )
+
+    def _answer_comparison(self, insights: List[ActionInsight]) -> str:
+        """Compare the top signals."""
+        selected = insights[:3]
+        lines = [
+            "### Signal comparison",
+            "",
+            "Here is how the highest-priority signals compare in the active dataset.",
+            "",
+        ]
+        for item in selected:
+            lines.append(
+                (
+                    f"- **{insight_display_name(item, include_reference=True)}**: "
+                    f"{item.priority_label}, score {item.priority_score:.3f}, "
+                    f"{item.metadata.get('cluster_size', 0):,} comments, "
+                    f"{item.metadata.get('negative_rate', 0):.0%} negative. "
+                    f"Root cause: {item.root_cause}."
+                )
+            )
+        if len(selected) >= 2:
+            lines.extend(
+                [
+                    "",
+                    (
+                        f"**Decision implication:** start with "
+                        f"{insight_display_name(selected[0], include_reference=True)} "
+                        "because it carries the highest combined priority score and negative concentration."
+                    ),
+                ]
+            )
+        return "\n".join(lines)
+
+    def _answer_owners(
+        self,
+        insights: List[ActionInsight],
+        focus: Optional[ActionInsight] = None,
+    ) -> str:
+        """Suggest owners for one or more action signals."""
+        selected = [focus] if focus is not None else insights[:4]
+        lines = [
+            "### Suggested ownership",
+            "",
+            "PX-Intel assigns owners from the issue theme and action type. Adjust these to match your actual operating model.",
+            "",
+        ]
+        for item in selected:
+            lines.append(
+                (
+                    f"- **{insight_display_name(item, include_reference=True)}**: "
+                    f"{self._owner_for(item)}. Timeline: {self._action_window_for(item)}. "
+                    f"Action: {item.recommended_action}"
+                )
+            )
+        return "\n".join(lines)
+
+    def _answer_signal_question(self, insight: ActionInsight) -> str:
+        """Return a general answer for a matched signal or topic."""
+        return "\n".join(
+            [
+                f"### {insight_display_name(insight, include_reference=True)}",
+                "",
+                f"{insight.key_insight}",
+                "",
+                "#### What PX-Intel sees",
+                "",
+                f"- Priority: {insight.priority_label}",
+                f"- Score: {insight.priority_score:.3f}",
+                f"- Volume: {insight.metadata.get('cluster_size', 0):,} comments",
+                f"- Negative concentration: {insight.metadata.get('negative_rate', 0):.0%}",
+                f"- Root cause: {insight.root_cause}",
+                "",
+                "#### Recommended response",
+                "",
+                f"- Owner: {self._owner_for(insight)}",
+                f"- Timeline: {self._action_window_for(insight)}",
+                f"- Action: {insight.recommended_action}",
+                f"- Success metric: {self._success_metric_for(insight)}",
+            ]
+        )
+
     def _answer_cascades(self, insights: List[ActionInsight]) -> str:
         """Explain cascade visibility."""
         lines = [
@@ -501,6 +850,56 @@ class CXActionIntelligenceAgent:
             if part.isdigit():
                 return int(part)
         return None
+
+    def _find_referenced_signal(
+        self,
+        text: str,
+        insights: List[ActionInsight],
+    ) -> Optional[ActionInsight]:
+        """Find the signal most directly referenced by a free-form question."""
+        normalized = str(text or "").lower()
+        for item in insights:
+            if signal_reference(item.cluster_id).lower() in normalized:
+                return item
+
+        cluster_id = self._extract_cluster_id(normalized)
+        if cluster_id is not None:
+            for item in insights:
+                if item.cluster_id == cluster_id:
+                    return item
+
+        stop_words = {
+            "and",
+            "the",
+            "what",
+            "why",
+            "how",
+            "are",
+            "for",
+            "with",
+            "that",
+            "this",
+            "some",
+            "need",
+            "needs",
+            "taken",
+        }
+        best_item = None
+        best_score = 0
+        for item in insights:
+            terms = set()
+            terms.update(str(item.issue_theme).lower().split())
+            terms.update(str(insight_display_name(item)).lower().split())
+            terms.update(str(keyword).lower() for keyword in item.keywords[:8])
+            score = sum(
+                1
+                for term in terms
+                if len(term) > 2 and term not in stop_words and term in normalized
+            )
+            if score > best_score:
+                best_score = score
+                best_item = item
+        return best_item if best_score >= 2 else None
 
     def _owner_for(self, insight: ActionInsight) -> str:
         """Suggest a practical owner from the issue theme."""
